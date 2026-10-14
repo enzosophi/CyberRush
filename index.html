@@ -640,6 +640,30 @@ for(const sd of[-1,1]){
   tube(head,[ell(.3,-.1,sd),ell(.31,.02,sd),ell(.28,.15,sd)],.005,glowY);
   part(head,box,glowY,.008,.05,.008,sd*.035,.22,.226);                          // fendas traseiras
 }
+// ---- Capuz de tecido: cobre laterais e nuca, deixando a placa frontal à mostra ----
+const hoodTex=(()=>{const cv=document.createElement('canvas');cv.width=256;cv.height=256;const x=cv.getContext('2d');
+  x.fillStyle='#4a3d66';x.fillRect(0,0,256,256);
+  for(let i=0;i<14;i++){const xx=Math.random()*256,w=R(8,30),g=x.createLinearGradient(xx-w,0,xx+w,0);   // dobras verticais
+    g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.5,'rgba(0,0,0,.35)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(xx-w,0,w*2,256)}
+  for(let i=0;i<5000;i++){x.fillStyle='rgba(255,255,255,'+(Math.random()*.05).toFixed(3)+')';x.fillRect(Math.random()*256,Math.random()*256,1,2)}   // trama
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t})();
+const hoodMat=new THREE.MeshLambertMaterial({map:hoodTex,color:0xbfb4d6,side:THREE.DoubleSide});
+const HC=[0,.19,.025],HS=[.205,.222,.255],OPEN=.82;   // centro, raios e meia-abertura frontal (rad)
+const hoodPt=(phi,th,k=1)=>[HC[0]-HS[0]*k*Math.cos(phi)*Math.sin(th),HC[1]+HS[1]*k*Math.cos(th),HC[2]+HS[2]*k*Math.sin(phi)*Math.sin(th)];
+const F=Math.PI*1.5;   // direção da frente (-Z) no parâmetro phi da esfera
+// corpo do capuz: tudo menos a abertura frontal
+outline(part(head,new THREE.SphereGeometry(1,32,20,F+OPEN,Math.PI*2-OPEN*2,0,2.25),hoodMat,...HS,...HC),1.04);
+// aba sobre a testa, emoldurando o topo da placa
+part(head,new THREE.SphereGeometry(1,20,6,F-OPEN,OPEN*2,0,.95),hoodMat,HS[0]*1.01,HS[1]*1.01,HS[2]*1.01,...HC);
+// contorno neon discreto na borda da abertura
+{const pts=[];
+  for(let th=2.2;th>=.95;th-=.12)pts.push(hoodPt(F-OPEN,th,1.015));
+  for(let ph=F-OPEN;ph<=F+OPEN+1e-6;ph+=.15)pts.push(hoodPt(ph,.95,1.015));
+  for(let th=.95;th<=2.21;th+=.12)pts.push(hoodPt(F+OPEN,th,1.015));
+  tube(head,pts,.005,pinkMat);}
+// caimento do capuz sobre a nuca e os ombros (preso ao tronco)
+const drape=part(torso,new THREE.CylinderGeometry(.15,.25,.2,24,1,true,-Math.PI*.85,Math.PI*1.7),hoodMat,1,1,.75,0,.56,.035);
+drape.rotation.y=Math.PI;   // abertura do caimento voltada para a frente
 const hair=[];
 // Cachecol neon esvoaçante
 const scarf=[];let sp0=joint(torso,0,.53,.07);
