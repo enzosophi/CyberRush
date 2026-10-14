@@ -39,3 +39,8 @@ Os arquivos `.fbx` do Mixamo não estão no repositório. A licença permite us�
 2. Coloque-os em `anim_src/` com os nomes `running.fbx`, `jump.fbx` e `slide.fbx`.
 3. Sirva a pasta com um servidor local (por exemplo, `python -m http.server`) e abra `anim_src/convert.html`.
 4. O resultado (`window.MOCAP`) é o objeto `MOCAP` embutido no `index.html`.
+
+## Créditos
+
+- Animações de corrida, pulo e deslize: Mixamo (Adobe), convertidas para o rig do jogo.
+- Renderização: Three.js r128.
