@@ -596,14 +596,15 @@ const iriTex=(()=>{const cv=document.createElement('canvas');cv.width=512;cv.hei
   for(const yy of[70,150,200]){x.beginPath();x.moveTo(0,yy);for(let xx=0;xx<=512;xx+=64)x.lineTo(xx,yy+(xx/64%2?10:-6));x.stroke()}
   for(let xx=32;xx<512;xx+=96){x.beginPath();x.moveTo(xx,40);x.lineTo(xx+18,230);x.stroke()}
   return new THREE.CanvasTexture(cv)})();
-const shellMat=new THREE.MeshPhongMaterial({map:iriTex,color:0xffffff,specular:0xd8b0ff,shininess:95,flatShading:true});
+const shellMat=new THREE.MeshPhongMaterial({map:iriTex,color:0xffffff,specular:0xd8b0ff,shininess:95});
 const faceMat=new THREE.MeshPhongMaterial({color:0x26324c,emissive:0x0a0c18,specular:0xc080ff,shininess:130,flatShading:true});
-const darkMat=new THREE.MeshPhongMaterial({color:0x14121e,specular:0x8080a0,shininess:120,flatShading:true});
+const darkMat=new THREE.MeshPhongMaterial({color:0x14121e,specular:0x8080a0,shininess:120});
+const mattMat=new THREE.MeshPhongMaterial({color:0x100e18,specular:0x2a2838,shininess:40});   // peças foscas (sem reflexo branco)
 const glowY=new THREE.MeshBasicMaterial({color:0xffc21a});
 const glowG=new THREE.MeshBasicMaterial({color:0x3dff7a});
-// casco facetado, alongado para trás, com crista no topo
-const shell=outline(part(head,new THREE.SphereGeometry(1,10,7),shellMat,.158,.18,.21,0,.18,.015),1.05);
-part(head,box,darkMat,.06,.035,.29,0,.355,.03).rotation.x=.08;                      // crista
+// casco liso, alongado para trás, com crista fosca no topo
+const shell=outline(part(head,new THREE.SphereGeometry(1,28,18),shellMat,.158,.18,.21,0,.18,.015),1.05);
+part(head,box,mattMat,.05,.025,.27,0,.352,.03).rotation.x=.08;                     // crista
 const guard=part(head,box,darkMat,.25,.07,.13,0,.035,.14);guard.rotation.x=-.45;    // protetor de nuca
 // placa frontal em duas metades anguladas: quina no centro, como a "proa" do capacete
 const faceG=joint(head,0,.15,0);faceG.rotation.x=.12;
@@ -614,6 +615,7 @@ const FZ=-.011;   // à frente da face da placa (pivô das metades fica na quina
 for(const sx of[-1,1]){
   const h=joint(faceG,0,0,-.205);h.rotation.y=-sx*.45;h.scale.x=sx;     // metade espelhada e girada para trás
   part(h,fGeo,faceMat,1,1,1,0,0,0);
+  part(h,fGeo,mattMat,1.12,1.1,1,0,0,.014);    // moldura escura: encaixa a placa no casco
   const bar=(x,y,w,hh,rz)=>{const b=part(h,box,glowY,w,hh,.008,x,y,FZ);b.rotation.z=rz};
   bar(.032,.12,.064,.011,0);           // barra da testa
   bar(.0455,.025,.011,.161,-.375);     // "V" principal
@@ -621,12 +623,15 @@ for(const sx of[-1,1]){
   bar(.09,-.065,.009,.098,-.418);      // bochecha
 }
 part(faceG,sphere,glowG,.013,.013,.008,0,-.142,-.213);
-for(const sx of[-1,1]){   // peças de bochecha ligando a placa ao casco
-  const ck=part(head,box,darkMat,.03,.2,.13,sx*.122,.15,-.135);ck.rotation.y=sx*.6;ck.rotation.x=.12;
-  const ln=part(head,box,glowY,.006,.12,.006,sx*.138,.13,-.15);ln.rotation.y=sx*.6;
-}   // luz verde no queixo
+for(const sx of[-1,1]){   // bochechas arredondadas preenchendo a junção entre placa e casco
+  outline(part(head,sphere,mattMat,.038,.1,.075,sx*.108,.13,-.105),1.06);
+}
+// gola blindada: fecha o vão entre a base do capacete e o pescoço
+outline(part(neck,cyl(.112,.09,.11,24),mattMat,1,1,1.2,0,.045,.01),1.06,1.02);
+const nr=part(head,new THREE.TorusGeometry(.125,.014,10,32),mattMat,1,1,1,0,.035,.02);nr.rotation.x=Math.PI/2;nr.scale.set(1,1.3,1);
+const nl=part(head,new THREE.TorusGeometry(.128,.004,6,32),glowY,1,1,1,0,.05,.02);nl.rotation.x=Math.PI/2;nl.scale.set(1,1.3,1);
 // laterais: módulos de orelha com anéis verdes, parafusos e filete amarelo contornando o casco
-const ell=(y,z,sd)=>{const ky=(y-.18)/.18,kz=(z-.025)/.2;return[sd*.155*Math.sqrt(Math.max(0,1-ky*ky-kz*kz))*1.03,y,z]};
+const ell=(y,z,sd)=>{const ky=(y-.18)/.18,kz=(z-.015)/.21;return[sd*.158*Math.sqrt(Math.max(0,1-ky*ky-kz*kz))*1.03,y,z]};   // superfície do casco
 for(const sd of[-1,1]){
   const ear=part(head,cyl(.048,.052,.045,8),darkMat,1,1,1,sd*.152,.15,.03);ear.rotation.z=Math.PI/2;
   const rg=part(head,new THREE.TorusGeometry(.034,.007,8,20),glowG,1,1,1,sd*.177,.15,.03);rg.rotation.y=Math.PI/2;
