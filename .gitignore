@@ -1,0 +1,4 @@
+# arquivos do Mixamo (licença não permite redistribuir)
+*.fbx
+# configuração local do Claude Code
+.claude/

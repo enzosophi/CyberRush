@@ -1,0 +1,73 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Conversor</title></head>
+<body><pre id="out">convertendo...</pre>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/fflate.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/FBXLoader.js"></script>
+<script>
+// Retargeting Mixamo -> rig do Neon Runner.
+// Saída por quadro: [hy, 13 quaternions locais] na ordem:
+// hips, torso, head, ombroL, cotoveloL, ombroR, cotoveloR, quadrilL, joelhoL, tornozeloL, quadrilR, joelhoR, tornozeloR
+const FPS=30,LEG=.78,Y=new THREE.Vector3(0,1,0),DOWN=new THREE.Vector3(0,-1,0);
+const load=u=>new Promise((res,rej)=>new THREE.FBXLoader().load(u,res,undefined,rej));
+function bones(o){const b={};o.traverse(n=>{b[n.name.replace(/^mixamorig:?/,'')]=n});return b}
+const C=new THREE.Quaternion().setFromAxisAngle(Y,Math.PI),Ci=C.clone().invert();   // Mixamo olha +Z, o jogo olha -Z
+const wp=n=>n.getWorldPosition(new THREE.Vector3()).applyQuaternion(C);
+const wq=n=>n.getWorldQuaternion(new THREE.Quaternion());
+const swing=(a,b)=>new THREE.Quaternion().setFromUnitVectors(a.clone().normalize(),b.clone().normalize());
+const inv=q=>q.clone().invert();
+function solve(B,bind,top){
+  const P=k=>wp(B[k]),dir=(a,b)=>P(b).sub(P(a)).normalize();
+  const delta=k=>C.clone().multiply(wq(B[k]).multiply(inv(bind[k]))).multiply(Ci);
+  const Qh=delta('Hips'),Qt=delta('Spine2'),Qhd=delta('Head');
+  const out={Qh,tL:inv(Qh).multiply(Qt),hdL:inv(Qt).multiply(Qhd)};
+  const arm=(s,e,h)=>{const qs=swing(DOWN,dir(s,e).applyQuaternion(inv(Qt))),Qs=Qt.clone().multiply(qs);
+    return[qs,swing(DOWN,dir(e,h).applyQuaternion(inv(Qs)))]};
+  const leg=(u,l,f,t)=>{const qh=swing(DOWN,dir(u,l).applyQuaternion(inv(Qh))),Qhp=Qh.clone().multiply(qh);
+    const qk=swing(DOWN,dir(l,f).applyQuaternion(inv(Qhp))),Qk=Qhp.clone().multiply(qk);
+    return[qh,qk,dir(f,t).applyQuaternion(inv(Qk))]};      // direção do pé no espaço do joelho
+  out.aL=arm('LeftArm','LeftForeArm','LeftHand');out.aR=arm('RightArm','RightForeArm','RightHand');
+  out.lL=leg('LeftUpLeg','LeftLeg','LeftFoot','LeftToeBase');out.lR=leg('RightUpLeg','RightLeg','RightFoot','RightToeBase');
+  out.hipsY=wp(B.Hips).y;
+  return out;
+}
+function analyze(o,name){
+  const B=bones(o);
+  for(const k of['Hips','Spine2','Head','LeftUpLeg','LeftLeg','LeftFoot','LeftToeBase','RightUpLeg','RightLeg','RightFoot','RightToeBase','LeftArm','LeftForeArm','LeftHand','RightArm','RightForeArm','RightHand'])
+    if(!B[k])throw new Error(name+': falta osso '+k);
+  o.updateMatrixWorld(true);
+  const bind={};for(const k in B)bind[k]=wq(B[k]);
+  const rest=solve(B,bind);          // pose de repouso: referência do pé e da altura do quadril
+  const legLen=wp(B.LeftUpLeg).distanceTo(wp(B.LeftLeg))+wp(B.LeftLeg).distanceTo(wp(B.LeftFoot));
+  const FWD=new THREE.Vector3(0,0,-1);
+  const clip=o.animations[0],mixer=new THREE.AnimationMixer(o);mixer.clipAction(clip).play();
+  const n=Math.round(clip.duration*FPS)+1,frames=[];
+  for(let i=0;i<n;i++){
+    mixer.setTime(Math.min(i/FPS,clip.duration-1e-4));o.updateMatrixWorld(true);
+    const S=solve(B,bind);
+    // tornozelo: gira o pé do nosso rig (repouso horizontal, -Z) pela diferença entre o pé atual e o de repouso do Mixamo
+    const foot=(cur,rst)=>swing(rst,cur);
+    const qs=[S.Qh,S.tL,S.hdL,S.aL[0],S.aL[1],S.aR[0],S.aR[1],S.lL[0],S.lL[1],foot(S.lL[2],rest.lL[2]),S.lR[0],S.lR[1],foot(S.lR[2],rest.lR[2])];
+    const row=[(S.hipsY-rest.hipsY)/legLen*LEG];
+    for(const q of qs){q.normalize();if(q.w<0)q.set(-q.x,-q.y,-q.z,-q.w);row.push(q.x,q.y,q.z,q.w)}
+    frames.push(row);
+  }
+  return{n,dur:clip.duration,frames};
+}
+const pack=fr=>{const a=new Int8Array(fr.length*53);fr.forEach((r,i)=>r.forEach((v,j)=>a[i*53+j]=Math.max(-127,Math.min(127,Math.round(v*127)))));
+  let s='';for(const b of new Uint8Array(a.buffer))s+=String.fromCharCode(b);return btoa(s)};
+(async()=>{
+  const R={};
+  for(const[k,f]of[['run','running.fbx'],['slide','slide.fbx'],['jump','jump.fbx']])R[k]=analyze(await load(f),k);
+  const hy=R.jump.frames.map(f=>f[0]),apex=hy.indexOf(Math.max(...hy));
+  let t0=apex;while(t0>0&&hy[t0-1]>0)t0--;let t1=apex;while(t1<hy.length-1&&hy[t1+1]>0)t1++;
+  const sh=R.slide.frames.map(f=>f[0]),lo=sh.map((v,i)=>v<-.25?i:-1).filter(i=>i>=0);
+  const M={run:{n:R.run.n,dur:+R.run.dur.toFixed(3),d:pack(R.run.frames)},
+           jump:{n:R.jump.n,t0,t1,d:pack(R.jump.frames)},
+           slide:{n:R.slide.n,s0:lo[0],s1:lo[lo.length-1],d:pack(R.slide.frames)}};
+  window.RESULT=R;window.MOCAP=M;
+  const txt=JSON.stringify(M);
+  const r=await fetch('http://127.0.0.1:8766/save',{method:'POST',headers:{'Content-Type':'application/json'},body:txt}).then(r=>r.text()).catch(e=>'falhou: '+e);
+  document.getElementById('out').textContent='salvo: '+r+' · '+txt.length+' bytes · jump t0='+t0+' t1='+t1+' · slide '+M.slide.s0+'-'+M.slide.s1;
+})().catch(e=>{document.getElementById('out').textContent='ERRO '+e.stack});
+</script></body></html>
