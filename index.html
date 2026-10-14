@@ -580,20 +580,61 @@ part(torso,box,goldTrim,.065,.04,.02,0,.11,-.114);
 // gola alta de couro
 const collar=outline(part(torso,new THREE.TorusGeometry(.085,.032,10,24),jacketMat,1,1,1,0,.545,0),1.08);collar.rotation.x=Math.PI/2;
 
-// ---- Cabeça: capacete cromado, viseira preta envolvente e painel de LED ----
+// ---- Cabeça: capacete estilo Ghostrunner (casco facetado iridescente + placa frontal com LEDs) ----
 const neck=joint(torso,0,.55,0);
 part(neck,cyl(.052,.058,.09),gloveMat,1,1,1,0,.03,0);
 const head=joint(neck,0,0,0);
-const HR=[.165,.186,.173];
-outline(part(head,sphere,helmMat,...HR,0,.17,0),1.05);
-part(head,new THREE.SphereGeometry(1,36,16,Math.PI*1.5-1.25,2.5,1.0,1.06),visorMat,HR[0]+.004,HR[1]+.004,HR[2]+.004,0,.17,0);   // viseira
-part(head,new THREE.SphereGeometry(1,36,4,Math.PI*1.5-.92,1.84,1.43,.33),ledMat,HR[0]+.008,HR[1]+.008,HR[2]+.008,0,.17,0);     // LED
-part(head,new THREE.SphereGeometry(1,36,2,Math.PI*1.5-1.28,2.56,2.05,.05),chromeMat,HR[0]+.006,HR[1]+.006,HR[2]+.006,0,.17,0); // friso
-for(const sx of[-1,1]){   // "orelhas": anel dourado + disco cromado
-  const rg=part(head,new THREE.TorusGeometry(.052,.012,8,24),goldTrim,1,1,1,sx*.162,.16,.012);rg.rotation.y=Math.PI/2;
-  const dk=part(head,cyl(.042,.042,.02,20),chromeMat,1,1,1,sx*.166,.16,.012);dk.rotation.z=Math.PI/2;
+// pintura iridescente roxo → azul-petróleo, com textura de fibra e linhas de painel
+const iriTex=(()=>{const cv=document.createElement('canvas');cv.width=512;cv.height=256;const x=cv.getContext('2d');
+  const g=x.createLinearGradient(0,0,512,0);
+  g.addColorStop(0,'#2a7d96');g.addColorStop(.22,'#7a3cff');g.addColorStop(.42,'#24506e');g.addColorStop(.6,'#8a40e8');g.addColorStop(.8,'#1f6a86');g.addColorStop(1,'#2a7d96');
+  x.fillStyle=g;x.fillRect(0,0,512,256);
+  const v=x.createLinearGradient(0,0,0,256);v.addColorStop(0,'rgba(255,255,255,.18)');v.addColorStop(.5,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,0,0,.45)');
+  x.fillStyle=v;x.fillRect(0,0,512,256);
+  x.globalAlpha=.12;x.fillStyle='#000';for(let yy=0;yy<256;yy+=4)for(let xx=(yy/4%2)*2;xx<512;xx+=4)x.fillRect(xx,yy,2,2);   // trama de fibra de carbono
+  x.globalAlpha=.55;x.strokeStyle='#0a0614';x.lineWidth=3;
+  for(const yy of[70,150,200]){x.beginPath();x.moveTo(0,yy);for(let xx=0;xx<=512;xx+=64)x.lineTo(xx,yy+(xx/64%2?10:-6));x.stroke()}
+  for(let xx=32;xx<512;xx+=96){x.beginPath();x.moveTo(xx,40);x.lineTo(xx+18,230);x.stroke()}
+  return new THREE.CanvasTexture(cv)})();
+const shellMat=new THREE.MeshPhongMaterial({map:iriTex,color:0xffffff,specular:0xd8b0ff,shininess:95,flatShading:true});
+const faceMat=new THREE.MeshPhongMaterial({color:0x26324c,emissive:0x0a0c18,specular:0xc080ff,shininess:130,flatShading:true});
+const darkMat=new THREE.MeshPhongMaterial({color:0x14121e,specular:0x8080a0,shininess:120,flatShading:true});
+const glowY=new THREE.MeshBasicMaterial({color:0xffc21a});
+const glowG=new THREE.MeshBasicMaterial({color:0x3dff7a});
+// casco facetado, alongado para trás, com crista no topo
+const shell=outline(part(head,new THREE.SphereGeometry(1,10,7),shellMat,.158,.18,.21,0,.18,.015),1.05);
+part(head,box,darkMat,.06,.035,.29,0,.355,.03).rotation.x=.08;                      // crista
+const guard=part(head,box,darkMat,.25,.07,.13,0,.035,.14);guard.rotation.x=-.45;    // protetor de nuca
+// placa frontal em duas metades anguladas: quina no centro, como a "proa" do capacete
+const faceG=joint(head,0,.15,0);faceG.rotation.x=.12;
+const fs=new THREE.Shape();
+fs.moveTo(0,.14);fs.lineTo(.1,.14);fs.lineTo(.122,.07);fs.lineTo(.108,-.04);fs.lineTo(.065,-.12);fs.lineTo(.026,-.16);fs.lineTo(0,-.16);fs.closePath();
+const fGeo=new THREE.ExtrudeGeometry(fs,{depth:.03,bevelEnabled:true,bevelThickness:.006,bevelSize:.006,bevelSegments:1});
+const FZ=-.011;   // à frente da face da placa (pivô das metades fica na quina frontal)
+for(const sx of[-1,1]){
+  const h=joint(faceG,0,0,-.205);h.rotation.y=-sx*.45;h.scale.x=sx;     // metade espelhada e girada para trás
+  part(h,fGeo,faceMat,1,1,1,0,0,0);
+  const bar=(x,y,w,hh,rz)=>{const b=part(h,box,glowY,w,hh,.008,x,y,FZ);b.rotation.z=rz};
+  bar(.032,.12,.064,.011,0);           // barra da testa
+  bar(.0455,.025,.011,.161,-.375);     // "V" principal
+  bar(.098,.058,.036,.008,.25);        // sobrancelha
+  bar(.09,-.065,.009,.098,-.418);      // bochecha
 }
-part(head,cyl(.006,.004,.09,6),chromeMat,1,1,1,.07,.36,.05);part(head,sphere,pinkMat,.014,.014,.014,.07,.405,.05);   // antena com LED
+part(faceG,sphere,glowG,.013,.013,.008,0,-.142,-.213);
+for(const sx of[-1,1]){   // peças de bochecha ligando a placa ao casco
+  const ck=part(head,box,darkMat,.03,.2,.13,sx*.122,.15,-.135);ck.rotation.y=sx*.6;ck.rotation.x=.12;
+  const ln=part(head,box,glowY,.006,.12,.006,sx*.138,.13,-.15);ln.rotation.y=sx*.6;
+}   // luz verde no queixo
+// laterais: módulos de orelha com anéis verdes, parafusos e filete amarelo contornando o casco
+const ell=(y,z,sd)=>{const ky=(y-.18)/.18,kz=(z-.025)/.2;return[sd*.155*Math.sqrt(Math.max(0,1-ky*ky-kz*kz))*1.03,y,z]};
+for(const sd of[-1,1]){
+  const ear=part(head,cyl(.048,.052,.045,8),darkMat,1,1,1,sd*.152,.15,.03);ear.rotation.z=Math.PI/2;
+  const rg=part(head,new THREE.TorusGeometry(.034,.007,8,20),glowG,1,1,1,sd*.177,.15,.03);rg.rotation.y=Math.PI/2;
+  for(const[yy,zz]of[[.075,-.02],[.075,.03]]){const bt=part(head,cyl(.012,.012,.03,10),glowG,1,1,1,sd*.15,yy,zz);bt.rotation.z=Math.PI/2}
+  tube(head,[ell(.09,-.15,sd),ell(.1,-.06,sd),ell(.07,.05,sd),ell(.1,.15,sd),ell(.17,.21,sd)],.0055,glowY);
+  tube(head,[ell(.3,-.1,sd),ell(.31,.02,sd),ell(.28,.15,sd)],.005,glowY);
+  part(head,box,glowY,.008,.05,.008,sd*.035,.22,.226);                          // fendas traseiras
+}
 const hair=[];
 // Cachecol neon esvoaçante
 const scarf=[];let sp0=joint(torso,0,.53,.07);
@@ -767,7 +808,7 @@ function animRunner(dt,now){
     scarf[i].rotation.x=(.05+.12*(1-fl))+Math.sin(now*(6+8*fl)-i*1.1)*(.1+.25*fl);
     scarf[i].rotation.y=Math.sin(now*5-i*.9)*.18*fl;
   }
-  if(now-ledT>.05){ledT=now;drawLED(now,!playing)}
+  glowY.color.setRGB(1,.74+.08*Math.sin(now*3),.1);   // pulsação dos LEDs do capacete
   aura.visible=playing&&P.perk.ghost>0;if(aura.visible)aura.material.opacity=.16+.08*Math.sin(now*10);
   bubble.rotation.y+=dt*2;bubble.rotation.x+=dt;
 }
