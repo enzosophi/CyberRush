@@ -691,9 +691,78 @@ function swayHood(now,fl){
 const drape=part(torso,new THREE.CylinderGeometry(.15,.25,.2,24,1,true,-Math.PI*.85,Math.PI*1.7),hoodMat,1,1,.75,0,.56,.035);
 drape.rotation.y=Math.PI;   // abertura do caimento voltada para a frente
 const hair=[];
-// Cachecol neon esvoaçante
-const scarf=[];let sp0=joint(torso,0,.53,.07);
-for(let i=0;i<6;i++){const j=joint(sp0,0,0,i?.11:0);part(j,box,i%2?cyanMat:pinkMat,.11-i*.01,.012,.12,0,0,.06);scarf.push(j);sp0=j}
+// ---- Cachecol: volta em torno do pescoço + duas pontas com física de corda (Verlet) ----
+const scarfTex=(()=>{const cv=document.createElement('canvas');cv.width=256;cv.height=32;const x=cv.getContext('2d');
+  for(let i=0;i<8;i++){x.fillStyle=i%2?'#00e8ff':'#ff2fa8';x.fillRect(i*32,0,32,32)}           // listras ao longo do comprimento
+  x.fillStyle='rgba(255,255,255,.25)';for(let i=0;i<8;i++)x.fillRect(i*32+28,0,3,32);
+  for(let i=0;i<1500;i++){x.fillStyle='rgba(0,0,0,'+(Math.random()*.25).toFixed(2)+')';x.fillRect(Math.random()*256,Math.random()*32,1,2)}   // tricô
+  const t=new THREE.CanvasTexture(cv);t.wrapS=THREE.RepeatWrapping;return t})();
+const scarfMat=new THREE.MeshLambertMaterial({map:scarfTex,emissive:0xffffff,emissiveMap:scarfTex,emissiveIntensity:.45,side:THREE.DoubleSide});
+// volta em torno do pescoço, por cima do caimento do capuz
+{const pts=[];for(let i=0;i<14;i++){const a=i/14*TAU;pts.push(new THREE.Vector3(Math.sin(a)*.205,.575+Math.sin(a*2)*.012,Math.cos(a)*.17+.02))}
+  const tg=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts,true),56,.042,10,true);
+  const uv=tg.attributes.uv;for(let i=0;i<uv.count;i++)uv.setX(i,uv.getX(i)*3);
+  torso.add(new THREE.Mesh(tg,scarfMat));}
+const KNOT=new THREE.Vector3(-.09,.55,-.165);   // nó na frente, à esquerda do peito (espaço do tronco)
+part(torso,sphere,scarfMat,.05,.045,.04,KNOT.x,KNOT.y,KNOT.z);
+// pontas: partículas em espaço de mundo, desenhadas como fita contínua (filha do corredor)
+const tails=[{n:12,seg:.06,w:.085,ph:0,off:new THREE.Vector3(-.02,0,0)},{n:10,seg:.06,w:.075,ph:1.9,off:new THREE.Vector3(.025,-.01,0)}];
+for(const t of tails){
+  t.p=[];t.q=[];for(let i=0;i<t.n;i++){t.p.push(new THREE.Vector3());t.q.push(new THREE.Vector3())}
+  const g=new THREE.BufferGeometry(),pos=new Float32Array(t.n*6),uv=new Float32Array(t.n*4),idx=[];
+  for(let i=0;i<t.n;i++){uv.set([i/(t.n-1)*1.6,0,i/(t.n-1)*1.6,1],i*4);if(i<t.n-1){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2)}}
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('uv',new THREE.BufferAttribute(uv,2));g.setIndex(idx);
+  t.mesh=new THREE.Mesh(g,scarfMat);t.mesh.frustumCulled=false;runner.add(t.mesh);
+}
+const SC={init:false,last:new THREE.Vector3()},sv1=new THREE.Vector3(),sv2=new THREE.Vector3(),sv3=new THREE.Vector3(),sInv=new THREE.Matrix4();
+function updateScarf(dt,now){
+  runner.updateMatrixWorld(true);
+  const anchor=torso.localToWorld(sv1.copy(KNOT)),right=sv2.setFromMatrixColumn(runner.matrixWorld,0).normalize();
+  if(!SC.init||anchor.distanceTo(SC.last)>2){   // primeiro quadro ou teletransporte (menu ⇄ pista): pendura reto
+    for(const t of tails)for(let i=0;i<t.n;i++){t.p[i].set(anchor.x,anchor.y-i*t.seg,anchor.z+i*.01);t.q[i].copy(t.p[i])}
+    SC.init=true;
+  }
+  SC.last.copy(anchor);
+  const COL=[[torso.localToWorld(new THREE.Vector3(0,.33,0)),.2],[torso.localToWorld(new THREE.Vector3(0,.5,0)),.16],[head.localToWorld(new THREE.Vector3(0,.15,.02)),.15]];
+  const menu=state==='menu',sub=3,h=Math.min(dt,.05)/sub,flap=menu?.5:Math.min(1.4,.35+speed/25);
+  for(let s=0;s<sub;s++){
+    for(const t of tails){
+      t.p[0].copy(anchor).addScaledVector(right,t.off.x).y+=t.off.y;
+      for(let i=1;i<t.n;i++){
+        const p=t.p[i],q=t.q[i],k=i/t.n;
+        sv3.subVectors(p,q).multiplyScalar(.986);   // inércia com arrasto do ar (o ar está parado no mundo)
+        q.copy(p);p.add(sv3);
+        p.y-=9.8*h*h;                                   // gravidade
+        const fx=Math.sin(now*13+i*.9+t.ph)*flap,fy=Math.cos(now*11+i*.7+t.ph)*flap*.5;   // tremular
+        p.addScaledVector(right,fx*h*h*6*k);p.y+=fy*h*h*6*k;
+        if(menu){p.x+=1.8*h*h;p.z-=.9*h*h}                  // vento da cobertura
+      }
+      for(let it=0;it<6;it++){                          // restrição de comprimento entre partículas
+        for(let i=1;i<t.n;i++){
+          const a=t.p[i-1],b=t.p[i];sv3.subVectors(b,a);const d=sv3.length()||1e-6,c=(d-t.seg)/d;
+          if(i===1)b.addScaledVector(sv3,-c);else{a.addScaledVector(sv3,c*.5);b.addScaledVector(sv3,-c*.5)}
+        }
+        for(let i=1;i<t.n;i++){                         // não atravessa o tronco nem a cabeça
+          for(const[c,r]of COL){sv3.subVectors(t.p[i],c);const d=sv3.length();if(d<r)t.p[i].addScaledVector(sv3,(r-d)/(d||1e-6))}
+        }
+      }
+    }
+  }
+  // fita: largura na horizontal do corredor, com leve torção ao tremular; vértices no espaço do corredor
+  sInv.copy(runner.matrixWorld).invert();
+  for(const t of tails){
+    const arr=t.mesh.geometry.attributes.position.array;
+    for(let i=0;i<t.n;i++){
+      const a=t.p[Math.max(0,i-1)],b=t.p[Math.min(t.n-1,i+1)];
+      const dir=sv3.subVectors(b,a).normalize();
+      const side=new THREE.Vector3().copy(right).addScaledVector(dir,-right.dot(dir)).normalize();
+      const tw=Math.sin(now*6+i*.6+t.ph)*.5*(i/t.n);side.multiplyScalar(Math.cos(tw)).add(new THREE.Vector3().crossVectors(dir,side).multiplyScalar(Math.sin(tw)));
+      const w=t.w*(1-.35*i/t.n)*.5,pA=t.p[i].clone().addScaledVector(side,-w).applyMatrix4(sInv),pB=t.p[i].clone().addScaledVector(side,w).applyMatrix4(sInv);
+      arr.set([pA.x,pA.y,pA.z,pB.x,pB.y,pB.z],i*6);
+    }
+    t.mesh.geometry.attributes.position.needsUpdate=true;t.mesh.geometry.computeVertexNormals();
+  }
+}
 
 // ---- Braços ----
 function arm(s){
@@ -859,11 +928,6 @@ function animRunner(dt,now){
   for(let i=1;i<hair.length;i++)hair[i].rotation.x=A.ha*.15+Math.sin(now*9-i*1.3)*.08*(playing?1:.3);
   const fl=playing?Math.min(1,sp+.35+A.wDa*.4):(state==='menu'?.45:0);   // no menu, o vento da cobertura
   swayHood(now,fl);
-  scarf[0].rotation.x=1.35-1.1*fl+Math.max(-.4,Math.min(.4,(playing?P.vy:0)*.04));
-  for(let i=1;i<scarf.length;i++){
-    scarf[i].rotation.x=(.05+.12*(1-fl))+Math.sin(now*(6+8*fl)-i*1.1)*(.1+.25*fl);
-    scarf[i].rotation.y=Math.sin(now*5-i*.9)*.18*fl;
-  }
   glowY.color.setRGB(1,.74+.08*Math.sin(now*3),.1);   // pulsação dos LEDs do capacete
   aura.visible=playing&&P.perk.ghost>0;if(aura.visible)aura.material.opacity=.16+.08*Math.sin(now*10);
   bubble.rotation.y+=dt*2;bubble.rotation.x+=dt;
@@ -1555,6 +1619,7 @@ function loop(n){
   const dt=Math.min((n-last)/1000,.05);last=n;
   update(dt);
   scene.updateMatrixWorld();updateTrail();
+  if(runner.visible)updateScarf(dt,performance.now()/1000);
   state==='menu'?renderer.render(mScene,mCam):renderer.render(scene,camera);
 }
 refreshMenu();
