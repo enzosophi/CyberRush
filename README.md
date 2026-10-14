@@ -1,4 +1,4 @@
-# Neon Runner 3D
+# CyberRush
 
 Jogo de corrida infinita em 3D com estética synthwave, feito em **um único arquivo HTML** com JavaScript puro e [Three.js](https://threejs.org/) (r128, via CDN). Inspirado no conceito do *.kkrieger*: quase tudo é gerado por código, incluindo texturas, cenário, personagem e sons.
 

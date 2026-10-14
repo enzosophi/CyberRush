@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Neon Runner 3D</title>
+<title>CyberRush</title>
 <style>
 :root{--bg:#05010f;--cy:#00f0ff;--pk:#ff2fa8;--gd:#ffd84d;--red:#ff3b6b;--panel:rgba(16,8,36,.72);--line:rgba(255,255,255,.12);--dim:rgba(255,255,255,.55)}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -101,7 +101,7 @@ kbd{display:inline-block;min-width:22px;background:rgba(255,255,255,.1);border:1
 <div id="ov">
   <!-- Tela inicial -->
   <div id="main" class="panel">
-    <div class="title">NEON<br>RUNNER</div>
+    <div class="title">CYBER<br>RUSH</div>
     <p>Corra pela rodovia neon, desvie dos buracos, use as plataformas aéreas, deslize sob barreiras, pegue perks 🛡️🧲🌙, colete cristais ◆ e atravesse zonas que mudam conforme você avança.</p>
     <div class="keys">
       <span><kbd>A</kbd> <kbd>D</kbd> / <kbd>←</kbd> <kbd>→</kbd></span><span>mover</span>
@@ -1111,6 +1111,7 @@ function update(dt){
     if(boosting){P.boost-=speed*dt;if(P.boost<=0){P.boost=0;toast('🚀 TURBO ENCERRADO','#ffd84d')}}
     P.dash-=dt;P.slide-=dt;
     P.x+=(Rt-L)*11*(1+.15*lv('agi'))*dt;
+    P.x=Math.max(-HALF+.35,Math.min(HALF-.35,P.x));   // paredes invisíveis nas bordas da pista
     P.coyote-=dt;P.buf-=dt;P.inv-=dt;
     if(P.buf>0){
       if(P.grounded||P.coyote>0){
