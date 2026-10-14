@@ -647,20 +647,46 @@ const hoodTex=(()=>{const cv=document.createElement('canvas');cv.width=256;cv.he
     g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(.5,'rgba(0,0,0,.35)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(xx-w,0,w*2,256)}
   for(let i=0;i<5000;i++){x.fillStyle='rgba(255,255,255,'+(Math.random()*.05).toFixed(3)+')';x.fillRect(Math.random()*256,Math.random()*256,1,2)}   // trama
   const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;return t})();
-const hoodMat=new THREE.MeshLambertMaterial({map:hoodTex,color:0xbfb4d6,side:THREE.DoubleSide});
-const HC=[0,.19,.025],HS=[.205,.222,.255],OPEN=.82;   // centro, raios e meia-abertura frontal (rad)
-const hoodPt=(phi,th,k=1)=>[HC[0]-HS[0]*k*Math.cos(phi)*Math.sin(th),HC[1]+HS[1]*k*Math.cos(th),HC[2]+HS[2]*k*Math.sin(phi)*Math.sin(th)];
+const hoodMat=new THREE.MeshLambertMaterial({map:hoodTex,color:0xddd2f2,side:THREE.DoubleSide});
+const HC=[0,.19,.025],HS=[.205,.222,.255],OPEN=.86;   // centro, raios e meia-abertura frontal (rad)
 const F=Math.PI*1.5;   // direção da frente (-Z) no parâmetro phi da esfera
-// corpo do capuz: tudo menos a abertura frontal
-outline(part(head,new THREE.SphereGeometry(1,32,20,F+OPEN,Math.PI*2-OPEN*2,0,2.25),hoodMat,...HS,...HC),1.04);
-// aba sobre a testa, emoldurando o topo da placa
-part(head,new THREE.SphereGeometry(1,20,6,F-OPEN,OPEN*2,0,.95),hoodMat,HS[0]*1.01,HS[1]*1.01,HS[2]*1.01,...HC);
-// contorno neon discreto na borda da abertura
-{const pts=[];
-  for(let th=2.2;th>=.95;th-=.12)pts.push(hoodPt(F-OPEN,th,1.015));
-  for(let ph=F-OPEN;ph<=F+OPEN+1e-6;ph+=.15)pts.push(hoodPt(ph,.95,1.015));
-  for(let th=.95;th<=2.21;th+=.12)pts.push(hoodPt(F+OPEN,th,1.015));
-  tube(head,pts,.005,pinkMat);}
+const hoodDir=(phi,th)=>[-Math.cos(phi)*Math.sin(th),Math.cos(th),Math.sin(phi)*Math.sin(th)];
+const TIP=new THREE.Vector3(0,.5,.87).normalize();
+// deforma a esfera em tecido: volume solto atrás, ponta caída, base aberta sobre os ombros e dobras
+function hoodWarp(ux,uy,uz,k=1){
+  const below=Math.max(0,-uy),back=Math.max(0,uz);
+  let x=ux*HS[0]*k,y=uy*HS[1]*k,z=uz*HS[2]*k;
+  x*=1+.5*Math.pow(below,1.3);z*=1+.3*Math.pow(below,1.3);   // abre embaixo
+  z+=.08*back*back;                                           // folga atrás da cabeça
+  const t=Math.max(0,(ux*TIP.x+uy*TIP.y+uz*TIP.z-.55)/.45),tw=t*t;
+  z+=.11*tw;y+=.015*tw-.05*tw*tw;                             // ponta do capuz, caindo
+  const a=Math.atan2(ux,uz),fold=1+(.035*Math.sin(a*7+uy*5)+.014*Math.sin(a*17-uy*9))*(.35+below*1.2);
+  x*=fold;z*=fold;y+=.008*Math.sin(a*11+uz*6);
+  return[HC[0]+x,HC[1]+y,HC[2]+z,tw];
+}
+function hoodGeo(ph0,phL,th0,thL,ws,hs,k){
+  const g=new THREE.SphereGeometry(1,ws,hs,ph0,phL,th0,thL),p=g.attributes.position,w=new Float32Array(p.count);
+  for(let i=0;i<p.count;i++){const v=hoodWarp(p.getX(i),p.getY(i),p.getZ(i),k);p.setXYZ(i,v[0],v[1],v[2]);w[i]=v[3]}
+  g.computeVertexNormals();g.userData={base:Float32Array.from(p.array),w};return g;
+}
+// corpo do capuz (tudo menos a abertura frontal) e aba sobre a testa, sem contorno duro
+const hoodBody=hoodGeo(F+OPEN,Math.PI*2-OPEN*2,0,2.45,44,28,1);
+part(head,hoodBody,hoodMat,1,1,1,0,0,0);
+part(head,hoodGeo(F-OPEN,OPEN*2,0,.95,22,8,1.012),hoodMat,1,1,1,0,0,0);
+// barra dobrada de tecido contornando a abertura
+const hemMat=new THREE.MeshLambertMaterial({map:hoodTex,color:0xe4dcf2});
+{const pts=[],P=(ph,th)=>{const d=hoodDir(ph,th),v=hoodWarp(d[0],d[1],d[2],1.012);return[v[0],v[1],v[2]]};
+  for(let th=2.4;th>=.95;th-=.1)pts.push(P(F-OPEN,th));
+  for(let ph=F-OPEN+.12;ph<=F+OPEN-.12;ph+=.12)pts.push(P(ph,.95));
+  for(let th=.95;th<=2.41;th+=.1)pts.push(P(F+OPEN,th));
+  tube(head,pts,.014,hemMat);}
+// balanço da ponta do capuz com o vento e a corrida
+function swayHood(now,fl){
+  const g=hoodBody,p=g.attributes.position,b=g.userData.base,w=g.userData.w;
+  const sx=Math.sin(now*2.3)*.02*(.4+fl),sz=.025*fl+Math.sin(now*3.1)*.008*fl,sy=-.015*fl;
+  for(let i=0;i<p.count;i++){const k=w[i];if(k<.001)continue;p.setXYZ(i,b[i*3]+sx*k,b[i*3+1]+sy*k,b[i*3+2]+sz*k)}
+  p.needsUpdate=true;g.computeVertexNormals();
+}
 // caimento do capuz sobre a nuca e os ombros (preso ao tronco)
 const drape=part(torso,new THREE.CylinderGeometry(.15,.25,.2,24,1,true,-Math.PI*.85,Math.PI*1.7),hoodMat,1,1,.75,0,.56,.035);
 drape.rotation.y=Math.PI;   // abertura do caimento voltada para a frente
@@ -832,6 +858,7 @@ function animRunner(dt,now){
   if(hair.length)hair[0].rotation.x=A.ha*.55;
   for(let i=1;i<hair.length;i++)hair[i].rotation.x=A.ha*.15+Math.sin(now*9-i*1.3)*.08*(playing?1:.3);
   const fl=playing?Math.min(1,sp+.35+A.wDa*.4):(state==='menu'?.45:0);   // no menu, o vento da cobertura
+  swayHood(now,fl);
   scarf[0].rotation.x=1.35-1.1*fl+Math.max(-.4,Math.min(.4,(playing?P.vy:0)*.04));
   for(let i=1;i<scarf.length;i++){
     scarf[i].rotation.x=(.05+.12*(1-fl))+Math.sin(now*(6+8*fl)-i*1.1)*(.1+.25*fl);
