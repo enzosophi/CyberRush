@@ -1184,8 +1184,8 @@ function addObs(x,z,w,h,d,ms){
   obs.push({m:g,z,w,h,d,ms,y0:0,y1:h,amp:HALF-w/2,ph:R(0,6),dead:false});
 }
 // Barreira com abertura embaixo: precisa deslizar
-// Zona livre de 40 m em volta de cada barreira: sem outros obstáculos e sem chão faltando
-const BAR_CLEAR=40;let lastObsZ=1e9,lastGapZ=1e9,zoneEnd=Infinity;   // z diminui para a frente
+// Zona livre de 25 m em volta de cada barreira: sem outros obstáculos e sem chão faltando
+const BAR_CLEAR=25;let lastObsZ=1e9,lastGapZ=1e9,zoneEnd=Infinity;   // z diminui para a frente
 const inBarZone=z=>z>zoneEnd;
 const canBar=z=>z<lastObsZ-BAR_CLEAR&&z<lastGapZ-BAR_CLEAR;
 function addBar(x0,x1,z){
@@ -1298,7 +1298,7 @@ function planSection(m,len,k){
 function planChunk(){
   const lvl=lvlNow(),r=Math.random(),gap=.2+.15*lvl;   // ~20% no início, ~35% no máximo
   planSection(7,R(14,24)-lvl*4,'open');
-  if(Math.random()<.14+.08*lvl){planSection(7,R(88,96),'bar');return}   // trecho da barreira com zona livre de 40 m
+  if(Math.random()<.14+.08*lvl){planSection(7,BAR_CLEAR*2+R(8,16),'bar');return}   // trecho da barreira com a zona livre dos dois lados
   if(r<gap*.35){                                  // corredor de 1 ou 2 faixas
     const m=Math.random()<.35+lvl*.45?pick([1,2,4]):pick([3,6]);
     planSection(m,R(14,24)+lvl*14,'corr');
@@ -1332,7 +1332,7 @@ function populate(s){
     }
     if(s.z0-s.z1>12&&Math.random()<.15*hunt)addPerk(pickPerk(),laneX(pick(lanes)),s.z1+3,1);
   }else if(s.k==='bar'){   // pista inteira, só a barreira no meio e cristais conduzindo até o vão
-    const z=s.z0-44,x=laneX(pick(lanes));
+    const z=s.z0-BAR_CLEAR-4,x=laneX(pick(lanes));
     if(canBar(z)){addBar(-HALF,HALF,z);for(let i=-1;i<2;i++)addGem(x,z+i*1.6,.55)}
     for(let i=0;i<5;i++)addGem(x,z+14+i*1.8,.9);
   }else if(s.k==='corr'){
