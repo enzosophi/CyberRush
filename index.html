@@ -475,6 +475,7 @@ function obsTex(kind,glow){
 }
 const mkObsMat=k=>new THREE.MeshPhongMaterial({map:obsTex(k,false),emissive:0xffffff,emissiveMap:obsTex(k,true),emissiveIntensity:.75,shininess:60});
 const obsMat=mkObsMat('crate'),movMat=mkObsMat('mov'),barMat=mkObsMat('bar');
+barMat.transparent=true;barMat.opacity=.5;barMat.depthWrite=false;   // painel da barreira meio transparente
 const obsEdge=new THREE.LineBasicMaterial({color:0xffb070}),movEdge=new THREE.LineBasicMaterial({color:0xfff0a0}),barEdge=new THREE.LineBasicMaterial({color:0xff9ab8});
 const metalMat=new THREE.MeshPhongMaterial({color:0x2a2438,emissive:0x0a0814,shininess:120,specular:0xaaaacc});
 const laserMat=new THREE.MeshBasicMaterial({color:0xff2f5a});
@@ -1173,6 +1174,7 @@ const keys={},pc=new THREE.Vector3();
 const LANE=3,laneX=l=>-HALF+LANE/2+l*LANE,lvlNow=()=>Math.min(dist/2000,1),pick=a=>a[Math.random()*a.length|0];
 
 function addObs(x,z,w,h,d,ms){
+  if(inBarZone(z))return;lastObsZ=z;
   const g=new THREE.Group();
   const b=new THREE.Mesh(box,ms?movMat:obsMat);b.scale.set(w,h,d);b.position.y=h/2;g.add(b);
   const e=new THREE.LineSegments(edgesGeo,ms?movEdge:obsEdge);e.scale.copy(b.scale);e.position.copy(b.position);g.add(e);
@@ -1182,10 +1184,12 @@ function addObs(x,z,w,h,d,ms){
   obs.push({m:g,z,w,h,d,ms,y0:0,y1:h,amp:HALF-w/2,ph:R(0,6),dead:false});
 }
 // Barreira com abertura embaixo: precisa deslizar
-let lastBarZ=1e9;
-const canBar=z=>z<lastBarZ-40;   // distância mínima de 40 m entre barreiras
+// Zona livre de 40 m em volta de cada barreira: sem outros obstáculos e sem chão faltando
+const BAR_CLEAR=40;let lastObsZ=1e9,lastGapZ=1e9,zoneEnd=Infinity;   // z diminui para a frente
+const inBarZone=z=>z>zoneEnd;
+const canBar=z=>z<lastObsZ-BAR_CLEAR&&z<lastGapZ-BAR_CLEAR;
 function addBar(x0,x1,z){
-  lastBarZ=z;
+  lastObsZ=z;zoneEnd=z-BAR_CLEAR;
   const w=x1-x0,y0=1.05,y1=3.5,d=.35,g=new THREE.Group();
   const pnl=new THREE.Mesh(box,barMat);pnl.scale.set(w-.3,y1-y0,d);pnl.position.y=(y0+y1)/2;g.add(pnl);
   const e=new THREE.LineSegments(edgesGeo,barEdge);e.scale.copy(pnl.scale);e.position.copy(pnl.position);g.add(e);
@@ -1280,6 +1284,10 @@ function addAir(l,z0,z1,top){
   scene.add(g);airs.push({x0,x1,z0,z1,top,g,geos});
 }
 function planSection(m,len,k){
+  if(m!==7){   // trecho com faixa faltando: só depois de sair da zona livre de uma barreira
+    while(nextZ>zoneEnd)planSection(7,nextZ-zoneEnd+2,'open');
+    lastGapZ=nextZ-len;
+  }
   const last=secs[secs.length-1];
   const s={z0:nextZ,z1:nextZ-len,m,k,prev:last?last.m:0,g:null,geos:[]};
   nextZ=s.z1;
@@ -1290,6 +1298,7 @@ function planSection(m,len,k){
 function planChunk(){
   const lvl=lvlNow(),r=Math.random(),gap=.2+.15*lvl;   // ~20% no início, ~35% no máximo
   planSection(7,R(14,24)-lvl*4,'open');
+  if(Math.random()<.14+.08*lvl){planSection(7,R(88,96),'bar');return}   // trecho da barreira com zona livre de 40 m
   if(r<gap*.35){                                  // corredor de 1 ou 2 faixas
     const m=Math.random()<.35+lvl*.45?pick([1,2,4]):pick([3,6]);
     planSection(m,R(14,24)+lvl*14,'corr');
@@ -1315,22 +1324,23 @@ function populate(s){
   if(s.k==='open'){
     for(let z=s.z0-4;z>s.z1+4;z-=R(7,12)-lvl*3){
       const r=Math.random();
-      if(r<.07+.06*lvl&&s.z0-s.z1>10&&canBar(z)){                // barreira: deslize por baixo (cristais no vão)
-        addBar(-HALF,HALF,z);const x=laneX(pick(lanes));for(let i=-1;i<2;i++)addGem(x,z+i*1.6,.55);
-      }else if(r<.6){
+      if(r<.6){
         const w=R(1.2,3.2),h=R(.6,1.3),d=R(.8,1.6),x=R(-HALF+w/2,HALF-w/2),ms=Math.random()<lvl*.6?R(1.5,3.5):0;
         addObs(x,z,w,h,d,ms);
         if(!ms&&Math.random()<.5)addGem(x,z,h+1.5);
       }else{const x=laneX(pick(lanes));for(let i=0;i<3;i++)addGem(x,z-i*1.6,.9)}
     }
     if(s.z0-s.z1>12&&Math.random()<.15*hunt)addPerk(pickPerk(),laneX(pick(lanes)),s.z1+3,1);
+  }else if(s.k==='bar'){   // pista inteira, só a barreira no meio e cristais conduzindo até o vão
+    const z=s.z0-44,x=laneX(pick(lanes));
+    if(canBar(z)){addBar(-HALF,HALF,z);for(let i=-1;i<2;i++)addGem(x,z+i*1.6,.55)}
+    for(let i=0;i<5;i++)addGem(x,z+14+i*1.8,.9);
   }else if(s.k==='corr'){
     const x0=-HALF+lanes[0]*LANE,x1=-HALF+(lanes[lanes.length-1]+1)*LANE;
     for(let z=s.z0-5;z>s.z1+3;z-=R(7,11)){
       if(Math.random()<.4+lvl*.25){
         const q=Math.random();
-        if(q<.15&&canBar(z))addBar(x0,x1,z);
-        else if(lanes.length>1&&q<.65)addObs(laneX(pick(lanes)),z,R(2,2.6),R(.7,1.2),R(.8,1.2),0);
+        if(lanes.length>1&&q<.6)addObs(laneX(pick(lanes)),z,R(2,2.6),R(.7,1.2),R(.8,1.2),0);
         else addObs((x0+x1)/2,z,x1-x0-.3,R(.55,.9),R(.6,1),0);
       }else{const x=laneX(pick(lanes));for(let i=0;i<3;i++)addGem(x,z-i*1.6,.9)}
     }
@@ -1360,7 +1370,7 @@ function clearWorld(){
   secs=[];airs=[];obs=[];gems=[];parts=[];
 }
 function reset(){
-  clearWorld();lastBarZ=1e9;nextZ=8;t=0;dist=0;gemCount=0;gemPts=0;runCr=0;shake=0;
+  clearWorld();lastObsZ=lastGapZ=1e9;zoneEnd=Infinity;nextZ=8;t=0;dist=0;gemCount=0;gemPts=0;runCr=0;shake=0;
   Object.assign(P,{x:0,y:.5,z:0,vy:0,grounded:true,coyote:0,buf:0,air2:false,shields:0,inv:0,
     dashes:lv('dash'),dash:0,boost:0,glide:false,slide:0,slideQ:false,perk:{magnet:0,x2:0,moon:0,ghost:0}});
   Object.assign(A,{flip:-1,land:0,lean:0,turn:0,lat:0,wGl:0,wDa:0,wSl:0});spin.rotation.x=0;
