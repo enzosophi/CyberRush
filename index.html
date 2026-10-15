@@ -524,6 +524,29 @@ const pinkMat=new THREE.MeshBasicMaterial({color:0xff2fa8});
 const cyanMat=new THREE.MeshBasicMaterial({color:0x00f0ff});
 const visorMat=new THREE.MeshPhongMaterial({color:0x020205,emissive:0x000000,shininess:320,specular:0xa8b0ff,side:THREE.DoubleSide});
 const lineMat=new THREE.MeshBasicMaterial({color:0x05010f,side:THREE.BackSide}); // contorno (casca invertida)
+const faceMat=new THREE.MeshPhongMaterial({color:0x26324c,emissive:0x0a0c18,specular:0xc080ff,shininess:130,flatShading:true});
+const darkMat=new THREE.MeshPhongMaterial({color:0x14121e,specular:0x8080a0,shininess:120});
+const mattMat=new THREE.MeshPhongMaterial({color:0x100e18,specular:0x2a2838,shininess:40});   // peças foscas (sem reflexo branco)
+const glowY=new THREE.MeshBasicMaterial({color:0xffc21a});
+const glowG=new THREE.MeshBasicMaterial({color:0x3dff7a});
+// ---- Tecidos do traje ninja (texturas procedurais) ----
+const texCv=(w,h,draw,rep)=>{const cv=document.createElement('canvas');cv.width=w;cv.height=h;draw(cv.getContext('2d'));const t=new THREE.CanvasTexture(cv);if(rep){t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(...rep)}return t};
+const weaveTex=texCv(128,128,x=>{x.fillStyle='#2e2a3c';x.fillRect(0,0,128,128);
+  x.strokeStyle='rgba(255,255,255,.05)';x.lineWidth=2;for(let i=-128;i<256;i+=6){x.beginPath();x.moveTo(i,0);x.lineTo(i+128,128);x.stroke()}   // sarja
+  for(let i=0;i<2500;i++){x.fillStyle='rgba(0,0,0,'+(Math.random()*.2).toFixed(2)+')';x.fillRect(Math.random()*128,Math.random()*128,1,1)}},[2,2]);
+const ninjaMat=new THREE.MeshPhongMaterial({map:weaveTex,color:0xffffff,specular:0x3a3550,shininess:16});
+const giMat=new THREE.MeshPhongMaterial({map:weaveTex,color:0xc8bce6,specular:0x3a3550,shininess:12});
+const wrapTex=texCv(64,64,x=>{x.fillStyle='#8f889e';x.fillRect(0,0,64,64);
+  for(let i=-64;i<128;i+=12){x.fillStyle='rgba(30,24,44,.35)';x.beginPath();x.moveTo(i,0);x.lineTo(i+4,0);x.lineTo(i+36,64);x.lineTo(i+32,64);x.fill()}   // voltas da bandagem
+  for(let i=0;i<600;i++){x.fillStyle='rgba(0,0,0,'+(Math.random()*.15).toFixed(2)+')';x.fillRect(Math.random()*64,Math.random()*64,1,1)}},[3,1]);
+const wrapMat=new THREE.MeshLambertMaterial({map:wrapTex});
+const obiTex=texCv(256,32,x=>{x.fillStyle='#3a1d4a';x.fillRect(0,0,256,32);x.fillStyle='#ffc21a';x.fillRect(0,3,256,2);x.fillRect(0,27,256,2);
+  x.fillStyle='rgba(0,0,0,.25)';for(let i=0;i<256;i+=16)x.fillRect(i,6,8,20)},[4,1]);
+const obiMat=new THREE.MeshLambertMaterial({map:obiTex,side:THREE.DoubleSide});
+const hiltTex=texCv(32,64,x=>{x.fillStyle='#0b0a12';x.fillRect(0,0,32,64);x.strokeStyle='#00e8ff';x.lineWidth=3;
+  for(let i=-32;i<96;i+=12){x.beginPath();x.moveTo(0,i);x.lineTo(32,i+16);x.moveTo(32,i);x.lineTo(0,i+16);x.stroke()}},[1,2]);   // empunhadura trançada
+const hiltMat=new THREE.MeshLambertMaterial({map:hiltTex,emissive:0xffffff,emissiveMap:hiltTex,emissiveIntensity:.5});
+const bracerMat=faceMat.clone();bracerMat.side=THREE.DoubleSide;
 // Painel de LED da viseira: equalizador de pixels desenhado em canvas a cada quadro
 const ledCv=document.createElement('canvas');ledCv.width=128;ledCv.height=32;const ledX=ledCv.getContext('2d');
 const ledTex=new THREE.CanvasTexture(ledCv);ledTex.magFilter=THREE.NearestFilter;
@@ -543,42 +566,60 @@ const cyl=(rt,rb,h,s=16)=>new THREE.CylinderGeometry(rt,rb,h,s,1);
 function part(par,geo,mat,sx,sy,sz,x,y,z){const m=new THREE.Mesh(geo,mat);m.scale.set(sx,sy,sz);m.position.set(x,y,z);par.add(m);return m}
 function joint(par,x,y,z){const g=new THREE.Group();g.position.set(x,y,z);par.add(g);return g}
 function outline(m,k=1.08,ky=k){const o=new THREE.Mesh(m.geometry,lineMat);o.scale.set(k,ky,k);m.add(o);return m}
+const lathe=(pr,seg=20)=>new THREE.LatheGeometry(pr.map(([r,y])=>new THREE.Vector2(r,y)),seg);   // pontos de baixo para cima
+// placa angular extrudada a partir de um contorno 2D, centralizada na espessura
+function plate(pts,depth=.012,bev=.004){const sh=new THREE.Shape();sh.moveTo(...pts[0]);for(const q of pts.slice(1))sh.lineTo(...q);sh.closePath();
+  const g=new THREE.ExtrudeGeometry(sh,{depth,bevelEnabled:true,bevelThickness:bev,bevelSize:bev,bevelSegments:1});g.translate(0,0,-depth/2);return g}
 function tube(par,pts,r,mat){const g=new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(q=>new THREE.Vector3(...q))),24,r,6,false);const m=new THREE.Mesh(g,mat);par.add(m);return m}
 
 const runner=new THREE.Group();            // raiz nos pés
 const spin=joint(runner,0,.86,0);           // pivô para mortais
 const hips=joint(spin,0,-.06,0);
-outline(part(hips,sphere,suitMat,.165,.11,.12,0,.02,0),1.06);   // pélvis
+part(hips,sphere,ninjaMat,.165,.115,.125,0,.02,0);   // pélvis
 
-// ---- Tronco torneado + jaqueta de couro estilo motoqueiro ----
+// ---- Tronco ninja: gi cruzado, placas de armadura, obi, correias e katana nas costas ----
 const TZ=.66,prof=[[0,0],[.135,0],[.15,.06],[.158,.16],[.183,.3],[.203,.42],[.198,.48],[.15,.54],[.07,.57],[0,.575]];
 const torso=joint(hips,0,.02,0);
-outline(part(torso,new THREE.LatheGeometry(prof.map(([r,y])=>new THREE.Vector2(r,y)),28),suitMat,1,1,TZ,0,0,0),1.05,1.01);
+outline(part(torso,lathe(prof,28),ninjaMat,1,1,TZ,0,0,0),1.03,1.01);
 const jprof=prof.filter(([r,y])=>y>=.12).map(([r,y])=>[r+.014,y]);jprof.unshift([.172,.12]);
-outline(part(torso,new THREE.LatheGeometry(jprof.map(([r,y])=>new THREE.Vector2(r,y)),28),jacketMat,1,1,TZ,0,0,0),1.05,1.01);
 const jr=y=>{for(let i=1;i<jprof.length;i++)if(y<=jprof[i][1]){const a=jprof[i-1],b=jprof[i],k=(y-a[1])/(b[1]-a[1]);return a[0]+(b[0]-a[0])*k}return .1};
 const surf=(x,y,sd)=>[x,y,sd*Math.sqrt(Math.max(0,jr(y)**2-x*x))*TZ+sd*.006];
-tube(torso,[surf(-.15,.5,-1),surf(-.07,.4,-1),surf(.02,.28,-1),surf(.08,.14,-1)],.0075,chromeMat);   // zíper diagonal
-for(const sx of[-1,1]){
-  const lp=surf(sx*.085,.45,-1),lap=outline(part(torso,box,jacketMat,.085,.15,.018,lp[0],lp[1],lp[2]-.006),1.1);lap.rotation.z=sx*.38;  // lapelas
-  part(torso,sphere,chromeMat,.012,.012,.012,...surf(sx*.12,.36,-1));                                                                   // botões de pressão
-  tube(torso,[surf(sx*.17,.5,1),surf(sx*.1,.38,1),surf(sx*.04,.24,1),surf(0,.15,1)],.006,pinkMat);                                      // V neon discreto nas costas
+// trapézios: a linha do ombro desce do pescoço até o braço sem degrau
+for(const sx of[-1,1]){const tr=part(torso,sphere,ninjaMat,.14,.065,.105,sx*.16,.495,0);tr.rotation.z=sx*.42}
+// gola cruzada do gi (lado esquerdo por cima) com filete amarelo
+for(const sx of[1,-1]){
+  const pts=[surf(sx*.1,.56,-1),surf(sx*.06,.47,-1),surf(-sx*.02,.35,-1),surf(-sx*.1,.2,-1)];
+  tube(torso,pts.map(q=>[q[0],q[1],q[2]-(sx<0?.012:.004)]),.018,giMat);
+  tube(torso,pts.map(q=>[q[0]+sx*.016,q[1],q[2]-(sx<0?.026:.018)]),.0035,glowY);
 }
-// emblema synthwave nas costas (sol listrado dentro de um triângulo)
-const embTex=(()=>{const cv=document.createElement('canvas');cv.width=cv.height=128;const x=cv.getContext('2d');
-  const g=x.createLinearGradient(0,36,0,104);g.addColorStop(0,'#ffe14d');g.addColorStop(1,'#ff2fa8');
-  x.fillStyle=g;x.beginPath();x.arc(64,72,32,0,TAU);x.fill();
-  x.globalCompositeOperation='destination-out';for(let i=0;i<4;i++)x.fillRect(0,76+i*8,128,2+i);
-  x.globalCompositeOperation='source-over';x.strokeStyle='#00f0ff';x.lineWidth=6;x.lineJoin='round';
-  x.beginPath();x.moveTo(64,10);x.lineTo(118,114);x.lineTo(10,114);x.closePath();x.stroke();return new THREE.CanvasTexture(cv)})();
-const emb=new THREE.Mesh(new THREE.PlaneGeometry(.2,.2),new THREE.MeshBasicMaterial({map:embTex,transparent:true}));
-emb.position.set(0,.33,surf(0,.33,1)[2]+.012);torso.add(emb);
-// cinto cromado com tachas + fivela dourada
-const belt=part(torso,new THREE.TorusGeometry(.163,.018,8,32),chromeMat,1,TZ,1,0,.11,0);belt.rotation.x=Math.PI/2;
-for(let i=0;i<16;i++){const a=i/16*TAU;part(torso,sphere,chromeMat,.011,.011,.011,Math.cos(a)*.17,.11,Math.sin(a)*.17*TZ)}
-part(torso,box,goldTrim,.065,.04,.02,0,.11,-.114);
-// gola alta de couro
-const collar=outline(part(torso,new THREE.TorusGeometry(.085,.032,10,24),jacketMat,1,1,1,0,.545,0),1.08);collar.rotation.x=Math.PI/2;
+// peitorais e abdômen blindados
+const pecG=plate([[-.07,.055],[.07,.055],[.08,-.015],[.03,-.06],[-.065,-.045]],.014);
+for(const sx of[-1,1]){const z=surf(sx*.095,.4,-1)[2];const pc=part(torso,pecG,faceMat,sx,1,1,sx*.095,.4,z-.006);pc.rotation.y=-sx*.32;
+  part(torso,box,glowY,.05,.005,.006,sx*.1,.448,z-.02).rotation.y=-sx*.32}
+const absG=plate([[-.062,.015],[.062,.015],[.056,-.015],[-.056,-.015]],.01);
+for(const y of[.29,.25,.21])part(torso,absG,darkMat,1,1,1,0,y,surf(0,y,-1)[2]-.004);
+// obi: faixa larga na cintura, nó lateral e pontas penduradas
+const obi=part(torso,new THREE.CylinderGeometry(.178,.168,.11,32,1,true),obiMat,1,1,TZ+.05,0,.115,0);
+part(torso,sphere,obiMat,.04,.035,.03,-.12,.12,-.1);
+for(const[dx,rz,l]of[[-.13,.18,.2],[-.105,-.1,.16]]){const tl=part(torso,box,obiMat,.035,l,.008,dx,.12-l/2-.02,-.11);tl.rotation.z=rz}
+// correia de couro cruzando o peito e as costas (segura a katana)
+tube(torso,[surf(.14,.52,-1),surf(.07,.42,-1),surf(-.04,.3,-1),surf(-.13,.17,-1)].map(q=>[q[0],q[1],q[2]-.02]),.009,darkMat);
+tube(torso,[surf(.15,.52,1),surf(.05,.36,1),surf(-.07,.22,1),surf(-.14,.14,1)].map(q=>[q[0],q[1],q[2]+.01]),.009,darkMat);
+part(torso,box,chromeMat,.03,.03,.012,.03,.37,surf(.03,.37,-1)[2]-.03).rotation.z=.6;   // fivela
+// katana nas costas: bainha diagonal, guarda, empunhadura trançada neon e pomo
+{const k=joint(torso,.02,.32,surf(0,.32,1)[2]+.045);k.rotation.z=-.62;
+  part(k,cyl(.02,.024,.62,8),darkMat,1,1,.7,0,-.12,0);
+  part(k,box,glowY,.005,.56,.005,.02,-.12,0);
+  part(k,cyl(.038,.038,.012,12),chromeMat,1,1,1,0,.195,0);
+  part(k,cyl(.017,.019,.19,10),hiltMat,1,1,1,0,.3,0);
+  part(k,sphere,glowY,.02,.016,.02,0,.4,0);}
+// painéis de tecido na cintura (frente e trás) que acompanham as pernas
+const flapF=joint(hips,0,.05,-.13),flapB=joint(hips,0,.05,.13);
+for(const[f,sz]of[[flapF,-1],[flapB,1]]){
+  part(f,box,ninjaMat,.17,.25,.012,0,-.125,0);
+  part(f,box,glowY,.17,.006,.014,0,-.248,0);
+  part(f,box,obiMat,.17,.03,.016,0,-.01,0);
+}
 
 // ---- Cabeça: capacete estilo Ghostrunner (casco facetado iridescente + placa frontal com LEDs) ----
 const neck=joint(torso,0,.55,0);
@@ -597,11 +638,6 @@ const iriTex=(()=>{const cv=document.createElement('canvas');cv.width=512;cv.hei
   for(let xx=32;xx<512;xx+=96){x.beginPath();x.moveTo(xx,40);x.lineTo(xx+18,230);x.stroke()}
   return new THREE.CanvasTexture(cv)})();
 const shellMat=new THREE.MeshPhongMaterial({map:iriTex,color:0xffffff,specular:0xd8b0ff,shininess:95});
-const faceMat=new THREE.MeshPhongMaterial({color:0x26324c,emissive:0x0a0c18,specular:0xc080ff,shininess:130,flatShading:true});
-const darkMat=new THREE.MeshPhongMaterial({color:0x14121e,specular:0x8080a0,shininess:120});
-const mattMat=new THREE.MeshPhongMaterial({color:0x100e18,specular:0x2a2838,shininess:40});   // peças foscas (sem reflexo branco)
-const glowY=new THREE.MeshBasicMaterial({color:0xffc21a});
-const glowG=new THREE.MeshBasicMaterial({color:0x3dff7a});
 // casco liso, alongado para trás, com crista fosca no topo
 const shell=outline(part(head,new THREE.SphereGeometry(1,28,18),shellMat,.158,.18,.21,0,.18,.015),1.05);
 part(head,box,mattMat,.05,.025,.27,0,.352,.03).rotation.x=.08;                     // crista
@@ -764,37 +800,57 @@ function updateScarf(dt,now){
   }
 }
 
-// ---- Braços ----
+// ---- Braços: deltoide contínuo, ombreira em placas, bandagens e braçadeira ----
 function arm(s){
-  const sh=joint(torso,s*.29,.47,0);
-  outline(part(sh,sphere,jacketMat,.07,.07,.07,0,0,0),1.1);
-  part(sh,box,chromeMat,.13,.016,.085,s*.005,.068,0);                           // dragona
-  outline(part(sh,cyl(.064,.054,.28),jacketMat,1,1,1,0,-.15,0),1.12,1.01);
-  part(sh,cyl(.006,.006,.22,6),chromeMat,1,1,1,s*.06,-.15,0);                  // zíper da manga
+  const sh=joint(torso,s*.29,.47,0),big=s<0;   // ombreira maior no ombro esquerdo (assimétrico)
+  part(sh,sphere,ninjaMat,.085,.12,.09,s*.004,-.05,0);                                         // deltoide fundindo tronco e braço
+  part(sh,new THREE.SphereGeometry(1,16,8,0,TAU,0,1.15),faceMat,big?.115:.098,big?.075:.062,big?.115:.098,s*.012,.02,0);
+  if(big)part(sh,new THREE.SphereGeometry(1,16,4,0,TAU,.95,.45),faceMat,.125,.1,.12,s*.014,.0,0);   // segunda camada
+  const rim=part(sh,new THREE.TorusGeometry(1,.035,6,28),glowY,big?.112:.095,big?.112:.095,1,s*.012,-.005,0);rim.rotation.x=Math.PI/2;rim.scale.z=.12;
+  part(sh,lathe([[.05,-.3],[.056,-.22],[.066,-.11],[.062,-.04],[.055,0]],16),ninjaMat,1,1,1,0,0,0);   // bíceps
+  for(const[y,r]of[[-.13,.067],[-.165,.064],[-.2,.061]]){const w=part(sh,new THREE.TorusGeometry(r,.009,6,20),wrapMat,1,1,1,0,y,0);w.rotation.x=Math.PI/2+.22}
   const el=joint(sh,0,-.3,0);
-  part(el,sphere,jacketMat,.054,.054,.054,0,0,0);
-  outline(part(el,cyl(.053,.045,.25),jacketMat,1,1,1,0,-.13,0),1.12,1.01);
-  part(el,cyl(.05,.05,.035),pinkMat,1,1,1,0,-.235,0);                          // punho neon
-  outline(part(el,sphere,gloveMat,.046,.064,.04,0,-.3,-.005),1.1);             // luva de couro
-  part(el,sphere,gloveMat,.018,.032,.018,-s*.042,-.28,-.026);                  // polegar
+  part(el,sphere,ninjaMat,.05,.056,.05,0,0,0);
+  part(el,plate([[-.03,.03],[.03,.03],[.026,-.03],[0,-.046],[-.026,-.03]],.01),darkMat,1,1,1,0,-.005,.05);   // cotoveleira
+  part(el,lathe([[.04,-.26],[.044,-.2],[.054,-.07],[.052,-.02],[.048,0]],16),ninjaMat,1,1,1,0,0,0);          // antebraço
+  part(el,new THREE.CylinderGeometry(.06,.051,.16,6,1,true,s*Math.PI/2-Math.PI*.55,Math.PI*1.1),bracerMat,1,1,1,0,-.14,0);   // braçadeira
+  part(el,box,glowY,.006,.12,.006,s*.061,-.14,0);
+  part(el,cyl(.047,.045,.04,12),wrapMat,1,1,1,0,-.245,0);                                     // punho enfaixado
+  part(el,sphere,gloveMat,.045,.055,.036,0,-.298,-.004);                                      // palma
+  const fg=part(el,box,gloveMat,.072,.05,.048,0,-.342,-.014);fg.rotation.x=.45;              // dedos dobrados
+  part(el,box,darkMat,.07,.016,.02,0,-.325,-.042);                                            // placa dos nós dos dedos
+  part(el,sphere,gloveMat,.018,.034,.018,-s*.042,-.29,-.026);                                 // polegar
   return{sh,el};
 }
-// ---- Pernas ----
+// ---- Pernas: coxa e panturrilha com volume, joelheira, caneleira, bandagens e tabi ----
 function leg(s){
   const hp=joint(hips,s*.11,0,0);
-  part(hp,sphere,suitMat,.085,.085,.085,0,0,0);
-  outline(part(hp,cyl(.085,.062,.38),suitMat,1,1,1,0,-.19,0),1.1,1.01);
-  part(hp,cyl(.006,.006,.32,6),cyanMat,1,1,1,s*.077,-.19,0);                  // friso neon lateral
+  part(hp,lathe([[.062,-.38],[.07,-.3],[.086,-.17],[.094,-.08],[.09,0],[.08,.04]],18),ninjaMat,1,1,1,0,0,0);
+  const tp=part(hp,plate([[-.035,.07],[.035,.07],[.04,-.06],[0,-.1],[-.04,-.06]],.012),faceMat,1,1,1,s*.09,-.15,0);tp.rotation.y=s*Math.PI/2;
+  part(hp,box,glowY,.006,.1,.006,s*.1,-.15,0);
+  if(s>0){   // coldre com kunai na coxa direita
+    const st=part(hp,new THREE.TorusGeometry(.089,.008,6,24),darkMat,1,1,1,0,-.22,0);st.rotation.x=Math.PI/2;
+    part(hp,box,chromeMat,.012,.085,.028,.1,-.27,-.02);
+    part(hp,cyl(.009,.009,.06,8),wrapMat,1,1,1,.1,-.2,-.02);
+    const rg=part(hp,new THREE.TorusGeometry(.014,.004,6,14),glowY,1,1,1,.1,-.162,-.02);rg.rotation.y=Math.PI/2;
+  }
   const kn=joint(hp,0,-.38,0);
-  part(kn,sphere,suitMat,.062,.062,.062,0,0,0);
-  outline(part(kn,cyl(.06,.05,.34),suitMat,1,1,1,0,-.17,0),1.12,1.01);
-  outline(part(kn,cyl(.066,.063,.17),shoeMat,1,1,1,0,-.28,0),1.08,1.01);      // cano da bota
-  part(kn,cyl(.068,.068,.012,16),chromeMat,1,1,1,0,-.2,0);                    // aro cromado
-  const ft=joint(kn,0,-.36,0);                                                   // tornozelo
-  outline(part(ft,sphere,shoeMat,.075,.06,.152,0,-.015,-.045),1.08);           // bota
-  part(ft,sphere,chromeMat,.05,.034,.05,0,-.022,-.158);                         // biqueira cromada
-  part(ft,box,pinkMat,.152,.03,.31,0,-.062,-.045);                              // sola neon
-  part(ft,box,chromeMat,.07,.04,.03,0,-.01,.1);                                 // salto cromado
+  part(kn,sphere,ninjaMat,.058,.06,.058,0,0,0);
+  const kp=part(kn,plate([[-.045,.05],[.045,.05],[.05,-.01],[0,-.065],[-.05,-.01]],.016),faceMat,1,1,1,0,-.005,-.06);kp.rotation.x=-.15;   // joelheira
+  part(kn,box,glowY,.05,.006,.006,0,.038,-.07);
+  part(kn,lathe([[.044,-.34],[.048,-.27],[.056,-.14],[.06,-.05],[.058,0]],18),ninjaMat,1,1,1,0,0,0);    // canela
+  part(kn,sphere,ninjaMat,.05,.1,.045,0,-.12,.026);                                                   // panturrilha
+  part(kn,plate([[-.038,.1],[.038,.1],[.044,-.08],[0,-.12],[-.044,-.08]],.012),faceMat,1,1,1,0,-.15,-.056);   // caneleira
+  part(kn,box,glowY,.006,.15,.006,0,-.16,-.066);
+  for(const[y,r,t]of[[-.235,.053,.3],[-.27,.051,-.3],[-.305,.048,.3]]){const w=part(kn,new THREE.TorusGeometry(r,.009,6,20),wrapMat,1,1,1,0,y,0);w.rotation.x=Math.PI/2+t}   // kyahan
+  const ft=joint(kn,0,-.36,0);                                                                         // tornozelo
+  part(ft,cyl(.05,.052,.06,14),wrapMat,1,1,1,0,.005,0);
+  part(ft,sphere,ninjaMat,.066,.056,.11,0,-.018,-.03);                                                // peito do pé
+  part(ft,sphere,ninjaMat,.025,.03,.05,-s*.04,-.03,-.13);                                             // dedão (tabi)
+  part(ft,sphere,ninjaMat,.04,.028,.05,s*.016,-.034,-.124);                                           // demais dedos
+  part(ft,sphere,ninjaMat,.048,.044,.05,0,-.028,.045);                                                // calcanhar
+  part(ft,box,darkMat,.13,.018,.27,0,-.062,-.045);                                                    // sola
+  part(ft,box,glowY,.134,.004,.274,0,-.052,-.045);
   return{hp,kn,ft};
 }
 const aL=arm(-1),aR=arm(1),lL=leg(-1),lR=leg(1);
@@ -918,6 +974,8 @@ function animRunner(dt,now){
   torso.rotation.set(cur[10],cur[11],0);hips.position.y=-.06+cur[12];hips.rotation.set(0,cur[13],0);head.rotation.set(cur[14],state==='menu'?menuLook.v*1.1:0,0);
   applyMocap(dt,playing);
   if(state==='menu')perchExtras();
+  {const fw=Math.sin(now*7)*.04;   // painéis da cintura seguem a coxa que vai à frente/atrás
+   flapF.rotation.x=Math.max(cur[0],cur[1],0)*.85+fw;flapB.rotation.x=Math.min(cur[0],cur[1],0)*.85-.1-fw}
   // inclinação nas curvas
   A.lean+=(A.lat*.24-A.lean)*damp(8,dt);A.turn+=(A.lat*.3-A.turn)*damp(6,dt);
   runner.rotation.z=A.lean;runner.rotation.y=A.turn;
